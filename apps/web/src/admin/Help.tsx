@@ -42,8 +42,11 @@ const TOPICS: Topic[] = [
         </p>
         <dl className="flex flex-col gap-3">
           <Step n="01" name="Text">
-            Paste the reading text the class is working on, or photograph a textbook page. You can
-            skip this entirely and go straight to a word list.
+            Paste the reading text the class is working on, add a PDF of it, or photograph a
+            textbook page. A PDF with real text in it — anything exported rather than scanned — is
+            read straight off the file, however many pages it has, with no AI and no cost. A
+            scanned PDF is a stack of pictures, so voku says so and asks before having them read.
+            You can skip this step entirely and go straight to a word list.
           </Step>
           <Step n="02" name="Words">
             The words to be tested, with their translations. The AI can pull them out of the text,

@@ -14,6 +14,17 @@ import {
   type WordView,
 } from '@voku/shared';
 import { ApiError, admin, api, waitForJob } from '../lib/api.ts';
+// Types only: pdf.js itself is loaded when a PDF is picked, not with the app.
+import type { Pdf } from '../lib/pdf.ts';
+import {
+  appendText,
+  assemble,
+  batched,
+  pageBatches,
+  pageRange,
+  scannedPages,
+  type PageContent,
+} from '../lib/pdf-pages.ts';
 import { Drill } from '../components/Drill.tsx';
 import { Worksheet } from './Worksheet.tsx';
 import type { JobView } from '@voku/shared';
@@ -322,19 +333,49 @@ function TextStep({
   const [text, setText] = useState(test.sourceText);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // A PDF with picture pages in it. With a model, its text is held back until
+  // the teacher decides, so the document can go into the box in page order;
+  // `read` keeps what the model returned batch by batch, so a failure keeps the
+  // batches before it and the button carries on from where it stopped. With no
+  // model, `pdf` is null: the text there is has gone in, and this is only the
+  // notice.
+  const [scans, setScans] = useState<{
+    pdf: Pdf | null;
+    pages: PageContent[];
+    read: Record<number, string>;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+
+  const heldPdf = scans?.pdf;
+  useEffect(() => () => heldPdf?.close(), [heldPdf]);
 
   const save = useMutation({
     mutationFn: () => api.patch(admin(`/tests/${test.id}`), { sourceText: text }),
     onSuccess: onDone,
   });
 
-  const transcribe = async (files: FileList) => {
+  const fail = (err: unknown) => {
+    setStatus(null);
+    setError(err instanceof Error ? err.message : String(err));
+  };
+
+  /** One request to the model, for a handful of page images. */
+  const readImages = async (images: string[]): Promise<string> => {
+    const { jobId } = await api.post<{ jobId: string }>(admin(`/tests/${test.id}/transcribe`), {
+      images,
+    });
+    return (await waitForJob<{ text: string }>(jobId)).text;
+  };
+
+  const transcribe = async (files: File[]) => {
     setError(null);
+    setBusy(true);
     setStatus('Reading the page…');
     try {
       const images = await Promise.all(
-        [...files].slice(0, 6).map(
+        files.map(
           (file) =>
             new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
@@ -344,18 +385,109 @@ function TextStep({
             }),
         ),
       );
-      const { jobId } = await api.post<{ jobId: string }>(
-        admin(`/tests/${test.id}/transcribe`),
-        { images },
-      );
-      const result = await waitForJob<{ text: string }>(jobId);
-      setText((prev) => (prev ? `${prev}\n\n${result.text}` : result.text));
+      // Each batch goes into the box as it arrives, so a later failure keeps it.
+      let done = 0;
+      for (const batch of batched(images)) {
+        if (images.length > 1) {
+          setStatus(`Reading ${pageRange(done + 1, done + batch.length)} of ${images.length}…`);
+        }
+        const read = await readImages(batch);
+        setText((prev) => appendText(prev, read));
+        done += batch.length;
+      }
       setStatus('Read it — check the text before going on.');
     } catch (err) {
-      setStatus(null);
-      setError(err instanceof Error ? err.message : String(err));
+      fail(err);
+    } finally {
+      setBusy(false);
     }
   };
+
+  /**
+   * Pulls the text straight out of the file — no model, no cost, no upload.
+   * Only pages that have no text of their own are offered to the model after.
+   */
+  const readPdf = async (file: File) => {
+    setError(null);
+    setScans(null);
+    setBusy(true);
+    setStatus('Opening the PDF…');
+    try {
+      const { openPdf, readPage } = await import('../lib/pdf.ts');
+      const pdf = await openPdf(file);
+      const pages: PageContent[] = [];
+      for (let page = 1; page <= pdf.pageCount; page++) {
+        setStatus(`Reading page ${page} of ${pdf.pageCount}…`);
+        pages.push(await readPage(pdf, page));
+      }
+
+      const scanned = scannedPages(pages);
+      if (!scanned.length) {
+        pdf.close();
+        setText((prev) => appendText(prev, assemble(pages, {})));
+        setStatus(`Read all ${pdf.pageCount} pages — check the text before going on.`);
+      } else if (!aiReady) {
+        // Nothing here can read a picture, so the text there is is all there will be.
+        pdf.close();
+        setText((prev) => appendText(prev, assemble(pages, {})));
+        setScans({ pdf: null, pages, read: {} });
+        setStatus(null);
+      } else {
+        setScans({ pdf, pages, read: {} });
+        setStatus(null);
+      }
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** The paid half: picture pages become images and go to the model. */
+  const readScannedPages = async () => {
+    if (!scans?.pdf) return;
+    const { pdf, pages } = scans;
+    const read = { ...scans.read };
+    const total = pages.length;
+    setError(null);
+    setBusy(true);
+    try {
+      const { renderPageImage } = await import('../lib/pdf.ts');
+      const todo = scannedPages(pages).filter((n) => !(n in read));
+      for (const batch of pageBatches(todo)) {
+        const range = pageRange(batch[0]!, batch.at(-1)!);
+        setStatus(`Preparing ${range} of ${total}…`);
+        const images: string[] = [];
+        for (const page of batch) images.push(await renderPageImage(pdf, page));
+        setStatus(`Reading ${range} of ${total}…`);
+        const result = await readImages(images);
+        // The model gives one text per batch; it goes where the first page was.
+        batch.forEach((page, i) => (read[page] = i === 0 ? result : ''));
+        setScans({ pdf, pages, read: { ...read } });
+      }
+      setText((prev) => appendText(prev, assemble(pages, read)));
+      setScans(null);
+      setStatus('Read them — check the text before going on.');
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Takes the text pages, and whatever the model has read so far, without the rest. */
+  const skipScannedPages = () => {
+    if (!scans) return;
+    setText((prev) => appendText(prev, assemble(scans.pages, scans.read)));
+    setScans(null);
+    setStatus('Added the pages with text — check it before going on.');
+  };
+
+  const pictures = scans ? scannedPages(scans.pages) : [];
+  const unread = scans ? pictures.filter((n) => !(n in scans.read)).length : 0;
+  const textPages = scans ? scans.pages.length - pictures.length : 0;
+  // Held text would be lost or land out of order under anything else started now.
+  const deciding = busy || Boolean(scans?.pdf);
 
   return (
     <div className="flex flex-col gap-5">
@@ -372,8 +504,22 @@ function TextStep({
       </Field>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending}>
+        <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending || deciding}>
           Save text
+        </Button>
+        <input
+          ref={pdfRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void readPdf(file);
+            e.target.value = '';
+          }}
+        />
+        <Button onClick={() => pdfRef.current?.click()} disabled={deciding}>
+          Add a PDF
         </Button>
         {aiReady ? (
           <>
@@ -383,14 +529,51 @@ function TextStep({
               accept="image/*"
               multiple
               className="hidden"
-              onChange={(e) => e.target.files && transcribe(e.target.files)}
+              onChange={(e) => {
+                if (e.target.files?.length) void transcribe([...e.target.files]);
+                e.target.value = '';
+              }}
             />
-            <Button onClick={() => fileRef.current?.click()}>Photograph a page instead</Button>
+            <Button onClick={() => fileRef.current?.click()} disabled={deciding}>
+              Photograph a page instead
+            </Button>
           </>
         ) : null}
         {status ? <span className="text-sm text-ink-60">{status}</span> : null}
       </div>
       <ErrorText>{error}</ErrorText>
+
+      {scans ? (
+        <Note>
+          <b>
+            {textPages === 0
+              ? `This PDF is a scan — all ${scans.pages.length} pages are pictures.`
+              : `${pictures.length} of these ${scans.pages.length} pages are pictures.`}
+          </b>{' '}
+          {scans.pdf ? (
+            <>
+              There is no text in them to take out, so they have to be read by the language model,
+              like a photograph. That costs a few cents and takes about a minute per ten pages.
+              {textPages > 0 ? ' The text goes in once you have chosen, in page order.' : null}
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Button onClick={() => void readScannedPages()} disabled={busy}>
+                  {`Read ${unread < pictures.length ? 'the remaining ' : ''}${unread} ${unread === 1 ? 'page' : 'pages'} with AI`}
+                </Button>
+                {textPages > 0 ? (
+                  <Button onClick={skipScannedPages} disabled={busy}>
+                    {`Use the ${textPages} ${textPages === 1 ? 'page' : 'pages'} with text only`}
+                  </Button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              There is no text in them to take out, and reading a picture needs a language model.
+              Add one in Settings, or type the words straight into the Words step.
+            </>
+          )}
+        </Note>
+      ) : null}
 
       {!aiReady ? (
         <Note>

@@ -2,7 +2,8 @@
 
 In-class vocabulary sprints for German students learning English.
 
-The teacher pastes (or photographs) an English text, trims the word list the AI
+The teacher pastes an English text (or uploads a PDF, or photographs a page),
+trims the word list the AI
 pulls out of it, and opens the test in class. Students scan a printed QR code on
 their iPad and get **five minutes** — questions ramping from easy to hard, answer
 as far as you can get.

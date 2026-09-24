@@ -88,6 +88,7 @@ Do not reverse these without asking. Each was chosen over a named alternative.
 | **The live board is private to the teacher.** | A leaderboard would publicly identify the same struggling students every week. |
 | **Server owns the clock.** Per-student, from `started_at`. | A latecomer still gets their full time; a device with a wrong clock gains nothing. |
 | **The LLM is optional everywhere.** | With no key, AI buttons hide and a full test can still be built from a pasted word list. Never make a path AI-only without a manual equivalent. |
+| **A PDF is read in the browser, and only its picture pages are paid for.** No page limit. | The text layer costs nothing, needs no key and is not an upload at all, so capping it would be a limit on the free half — a 19-page word list reads in under a second. Picture pages — no text, or one image over most of the page with only a stamp on it — are named and counted, and the model reads them only when the teacher presses the button. Until then a mixed document's text is held back, so it goes in once, in page order. Batches are kept as they arrive, so a failure costs one batch and the button carries on from there. pdf.js is loaded only when a PDF is picked, and in its legacy build: the default one needs this year's browsers and fails on picture pages on anything older. |
 | **Invites are links, not emails.** | No SMTP in the deployment, so no school spam filter can silently break onboarding. |
 
 **The accepted trade-off:** the sprint sacrifices coverage. A slow student may
