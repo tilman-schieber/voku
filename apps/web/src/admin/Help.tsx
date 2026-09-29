@@ -269,6 +269,14 @@ const TOPICS: Topic[] = [
           second round of just the ones that needed another go.
         </p>
         <p>
+          A round is a <b>stage of twelve words</b>, not the whole list: fifty words are not learned
+          in one sitting. Each student's own device remembers which words they have had right first
+          time, so the next stage carries on from there — it says <i>learned here</i> on their
+          screen, because that is exactly what it is. Nothing of this reaches the server or you. A
+          student who switches device, or clears their browser, starts the stages again; the words
+          are unaffected, only the bookmark is.
+        </p>
+        <p>
           It deliberately does <b>not</b> use the test's own questions. They would be the same
           questions in the same order on the day, so practising them would measure how many times a
           student clicked through rather than what they know — and a multiple-choice trap stops

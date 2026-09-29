@@ -57,6 +57,7 @@ export const TestUpdateSchema = z.object({
   durationSeconds: z.number().int().min(30).max(3600).optional(),
   targetCount: z.number().int().min(1).optional(),
   mix: MixWeightsSchema.optional(),
+  mcqAnyWord: z.boolean().optional(),
 });
 
 export const ExtractRequestSchema = z.object({
@@ -184,6 +185,8 @@ export interface TestView {
   durationSeconds: number;
   targetCount: number;
   mix: z.infer<typeof MixWeightsSchema>;
+  /** Multiple choice may go to any word, not only traps and the harder ones. */
+  mcqAnyWord: boolean;
   wordCount: number;
   includedCount: number;
   questionCount: number;
@@ -270,6 +273,8 @@ export interface DrillItem {
   direction: QuestionDirection;
   /** The unit this word came back from, shown as a quiet label. Null if new. */
   repeatedFrom: string | null;
+  /** The sentence the word was met in — blanked when it would give the answer. */
+  context: string | null;
 }
 
 export interface DrillView {

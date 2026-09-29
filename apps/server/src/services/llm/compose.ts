@@ -277,6 +277,7 @@ export async function generateWithLlm(
   const { assignments, report: assignment } = assignFormats(
     words.map(toAssignable),
     mix.success ? mix.data : DEFAULT_MIX,
+    { anyWord: test.mcq_any_word === 1 },
   );
 
   const byWordId = new Map(words.map((w) => [w.id, w]));

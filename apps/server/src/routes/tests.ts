@@ -138,6 +138,7 @@ testsRouter.patch(
     if (body.durationSeconds !== undefined) set('duration_seconds', 'duration', body.durationSeconds);
     if (body.targetCount !== undefined) set('target_count', 'target', body.targetCount);
     if (body.mix !== undefined) set('mix_json', 'mix', JSON.stringify(MixWeightsSchema.parse(body.mix)));
+    if (body.mcqAnyWord !== undefined) set('mcq_any_word', 'mcq_any', body.mcqAnyWord ? 1 : 0);
 
     if (sets.length > 0) {
       req.db.run(`UPDATE tests SET ${sets.join(', ')} WHERE id = :id`, params);

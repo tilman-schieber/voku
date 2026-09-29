@@ -48,12 +48,17 @@ function hardnessCutoff(words: AssignableWord[]): number {
   return Math.max(ABSOLUTE_EASY_CEILING, percentile);
 }
 
-function eligibility(words: AssignableWord[]): Record<QuestionType, (w: AssignableWord) => boolean> {
+function eligibility(
+  words: AssignableWord[],
+  anyWord: boolean,
+): Record<QuestionType, (w: AssignableWord) => boolean> {
   const hard = hardnessCutoff(words);
   return {
-    // A trap, or one of the harder words here — never an easy free 25%.
-    mcq_translation: (w) => w.trickiness >= MIN_TRICKINESS_FOR_MCQ || w.difficulty >= hard,
-    mcq_definition: (w) => w.suitsDefinitionMcq && w.difficulty >= hard,
+    // A trap, or one of the harder words here — never an easy free 25%, unless
+    // the teacher has decided for this test that a mix of formats matters more.
+    mcq_translation: (w) => anyWord || w.trickiness >= MIN_TRICKINESS_FOR_MCQ || w.difficulty >= hard,
+    // Still needs a definition worth writing, whatever the setting says.
+    mcq_definition: (w) => w.suitsDefinitionMcq && (anyWord || w.difficulty >= hard),
     fill_blank: (w) => w.suitsFillBlank,
     translate_input: () => true,
   };
@@ -67,14 +72,22 @@ const PREFERENCE: Record<QuestionType, (a: AssignableWord, b: AssignableWord) =>
   translate_input: () => 0,
 };
 
-const SHORTFALL_REASON: Record<QuestionType, string> = {
-  mcq_translation:
-    'multiple choice only goes to traps and to the harder words in this test — on an easy one it would be a free guess',
-  mcq_definition:
-    'only the harder words that can be defined in plain English are worth this format',
-  fill_blank: 'only some words sit naturally in a gap sentence',
-  translate_input: 'every word can be typed, so this should never fall short',
-};
+function shortfallReason(type: QuestionType, anyWord: boolean): string {
+  switch (type) {
+    case 'mcq_translation':
+      return anyWord
+        ? 'there were not enough other words on the list to build the wrong options from'
+        : 'multiple choice only goes to traps and to the harder words in this test — on an easy one it would be a free guess';
+    case 'mcq_definition':
+      return anyWord
+        ? 'only words that can be defined in plain English are worth this format'
+        : 'only the harder words that can be defined in plain English are worth this format';
+    case 'fill_blank':
+      return 'only some words sit naturally in a gap sentence';
+    case 'translate_input':
+      return 'every word can be typed, so this should never fall short';
+  }
+}
 
 /**
  * Scarce formats are allocated before abundant ones, and typed translation goes
@@ -121,7 +134,16 @@ function desiredCounts(weights: MixWeights, total: number): Record<QuestionType,
   return counts;
 }
 
-export function assignFormats(words: AssignableWord[], weights: MixWeights): AssignmentResult {
+export interface AssignOptions {
+  /** Multiple choice may go to any word, not only traps and the harder ones. */
+  anyWord?: boolean;
+}
+
+export function assignFormats(
+  words: AssignableWord[],
+  weights: MixWeights,
+  { anyWord = false }: AssignOptions = {},
+): AssignmentResult {
   const achieved = Object.fromEntries(QUESTION_TYPES.map((t) => [t, 0])) as Record<
     QuestionType,
     number
@@ -135,7 +157,7 @@ export function assignFormats(words: AssignableWord[], weights: MixWeights): Ass
 
   const wanted = desiredCounts(weights, words.length);
   const unassigned = new Map(words.map((w) => [w.id, w]));
-  const ELIGIBLE = eligibility(words);
+  const ELIGIBLE = eligibility(words, anyWord);
 
   for (const type of ORDER) {
     const want = wanted[type];
@@ -154,7 +176,12 @@ export function assignFormats(words: AssignableWord[], weights: MixWeights): Ass
     }
 
     if (take.length < want) {
-      shortfalls.push({ type, wanted: want, got: take.length, reason: SHORTFALL_REASON[type] });
+      shortfalls.push({
+        type,
+        wanted: want,
+        got: take.length,
+        reason: shortfallReason(type, anyWord),
+      });
     }
   }
 

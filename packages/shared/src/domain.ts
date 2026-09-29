@@ -63,6 +63,16 @@ export const TestSettingsSchema = z.object({
   durationSeconds: z.number().int().min(30).max(3600),
   targetCount: z.number().int().min(1),
   mix: MixWeightsSchema,
+  /**
+   * Lets multiple choice go to any word, not only traps and the harder ones.
+   *
+   * Off by default, because four options on an easy word are a free 25% and a
+   * wrong answer costs nothing. On, because a text with few traps otherwise
+   * yields a test that is nothing but typing, which is hardest on exactly the
+   * students who need the choice most. The teacher decides which cost to pay,
+   * per test, and sees the result in the numbers.
+   */
+  mcqAnyWord: z.boolean().default(false),
 });
 export type TestSettings = z.infer<typeof TestSettingsSchema>;
 

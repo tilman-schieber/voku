@@ -212,3 +212,38 @@ describe('buildOffline', () => {
     expect(built).toEqual([]);
   });
 });
+
+/**
+ * The class asked for this: a bare word carries no sense with it.  is
+ * *ansprechen* or *thematisieren* depending on the sentence, and without the
+ * sentence the student is guessing which one is wanted.
+ */
+describe('the sentence under a typed question', () => {
+  const ADDRESS = word('w9', 'address', 'thematisieren', {
+    contextSentence: 'In his speech, the politician failed to address the core issues.',
+  });
+
+  const typed = (w: BuildableWord, direction: 'de_en' | 'en_de') =>
+    buildOffline([w], [{ wordId: w.id, type: 'translate_input' }], { direction, rng: rng() })[0]!
+      .payload as { type: 'translate_input'; context?: string };
+
+  it('shows the sentence as written when the answer is the German', () => {
+    expect(typed(ADDRESS, 'en_de').context).toBe(ADDRESS.contextSentence);
+  });
+
+  // The same sentence asked the other way round would contain the answer.
+  it('blanks the word out when the answer is the English', () => {
+    const context = typed(ADDRESS, 'de_en').context!;
+    expect(context).toContain(BLANK);
+    expect(context.toLowerCase()).not.toContain('address');
+  });
+
+  it('shows nothing rather than the answer when the word is not in the sentence', () => {
+    const odd = word('w10', 'thorough', 'gründlich', { contextSentence: 'She checked it twice.' });
+    expect(typed(odd, 'de_en').context).toBeUndefined();
+  });
+
+  it('shows nothing when the word has no sentence yet', () => {
+    expect(typed(word('w11', 'weary', 'müde'), 'en_de').context).toBeUndefined();
+  });
+});

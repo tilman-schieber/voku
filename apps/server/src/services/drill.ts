@@ -107,6 +107,7 @@ export function drillItems(db: Db, test: TestRow): DrillItem[] {
             prompt: safe.prompt,
             direction: safe.direction,
             repeatedFrom: repeatedFrom.get(wordId) ?? null,
+            context: safe.context ?? null,
           },
         ]
       : [];

@@ -183,6 +183,14 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE test_words ADD COLUMN repeated_from TEXT;
   `,
+
+  // 5 — whether multiple choice may go to any word in this test. Off keeps the
+  // original rule (traps and the harder words only); on trades the free-guess
+  // risk for a test that is not all typing when the text yielded few traps.
+  // Per test, because it is a judgement about one class and one text.
+  `
+  ALTER TABLE tests ADD COLUMN mcq_any_word INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function migrate(db: Db): number {

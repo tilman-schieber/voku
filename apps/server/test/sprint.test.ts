@@ -284,6 +284,46 @@ describe('running the sprint', () => {
   });
 });
 
+/**
+ * Skipping is answering with nothing. A word you do not know otherwise eats the
+ * clock while you type something to escape it, and since wrong answers cost no
+ * marks, the only thing the old behaviour protected was the typing.
+ */
+describe('skipping a word', () => {
+  it('counts as reached and wrong, and moves on', async () => {
+    await signInStudent(0);
+    const started = (await server.post(`/api/s/tests/${testId}/start`)).body;
+
+    const res = await server.post(`/api/s/attempts/${started.attempt.id}/answers`, {
+      questionId: started.question.id,
+      given: '',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.feedback.correct).toBe(false);
+    // The answer still comes back, which is the point of skipping rather than
+    // typing rubbish: the word is shown instead of being lost.
+    expect(res.body.feedback.correctAnswer).toBeTruthy();
+    expect(res.body.attempt.reachedIndex).toBe(1);
+    expect(res.body.attempt.correctCount).toBe(0);
+    expect(res.body.question.index).toBe(2);
+  });
+
+  it('leaves the word on the student’s own list, like any other miss', async () => {
+    await signInStudent(0);
+    const started = (await server.post(`/api/s/tests/${testId}/start`)).body;
+    await server.post(`/api/s/attempts/${started.attempt.id}/answers`, {
+      questionId: started.question.id,
+      given: '',
+    });
+    await server.post(`/api/s/attempts/${started.attempt.id}/submit`);
+    await asTeacher(() => server.post(`/api/admin/tests/${testId}/close`));
+
+    const mine = await server.get('/api/s/my-words');
+    expect(mine.body.words).toHaveLength(1);
+  });
+});
+
 describe('handing in and reviewing', () => {
   // Handing in shows the score, not the answers: an early finisher would
   // otherwise hold the whole key — unreached questions included — while the

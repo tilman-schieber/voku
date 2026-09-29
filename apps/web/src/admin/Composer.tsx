@@ -1032,6 +1032,7 @@ function DesignStep({ test, onDone }: { test: TestView; onDone: () => void }) {
   const [duration, setDuration] = useState(test.durationSeconds);
   const [target, setTarget] = useState(test.targetCount);
   const [direction, setDirection] = useState(test.direction);
+  const [mcqAnyWord, setMcqAnyWord] = useState(test.mcqAnyWord);
 
   const save = useMutation({
     mutationFn: () =>
@@ -1040,6 +1041,7 @@ function DesignStep({ test, onDone }: { test: TestView; onDone: () => void }) {
         durationSeconds: duration,
         targetCount: target,
         direction,
+        mcqAnyWord,
       }),
     onSuccess: onDone,
   });
@@ -1099,10 +1101,27 @@ function DesignStep({ test, onDone }: { test: TestView; onDone: () => void }) {
         <div>
           <h2 className="text-xl">The mix</h2>
           <p className="text-sm text-ink-60">
-            These are preferences, not quotas. Multiple choice only goes to words flagged as traps,
-            so if the text has few, you will get fewer — and the next step says so plainly.
+            These are preferences, not quotas — the next step says plainly what the text could
+            actually support.
           </p>
         </div>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={mcqAnyWord}
+            onChange={(e) => setMcqAnyWord(e.target.checked)}
+            className="mt-1 size-4 accent-[var(--color-accent)]"
+          />
+          <span className="text-sm">
+            <span className="text-ink">Multiple choice on any word</span>
+            <span className="block text-ink-60">
+              {mcqAnyWord
+                ? 'Any word can become a choice. Four options mean a student who knows nothing still gets about one in four, so scores sit higher than on a test without this.'
+                : 'Off: choices go only to traps and to the harder words here. A text with few traps therefore gives a test that is mostly typing.'}
+            </span>
+          </span>
+        </label>
         {QUESTION_TYPES.map((type) => (
           <label key={type} className="flex flex-wrap items-center gap-3">
             <span className="min-w-56 text-lg">{TYPE_LABEL[type]}</span>

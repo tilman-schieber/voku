@@ -30,6 +30,16 @@ const TranslateInputObject = z.object({
   prompt: text,
   /** All answers that count as correct. `accepted[0]` is the canonical one. */
   accepted: z.array(text).min(1),
+  /**
+   * The sentence the word was met in, shown under the prompt.
+   *
+   * A bare word has no sense attached to it: `address` is *ansprechen* or
+   * *thematisieren* depending on the sentence, and a student who cannot see
+   * which is being asked is guessing rather than recalling. Asking into
+   * English the sentence is blanked, because it would otherwise contain the
+   * answer; asking into German it stands as written.
+   */
+  context: text.optional(),
 });
 
 const McqTranslationObject = z.object({

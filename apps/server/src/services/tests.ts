@@ -31,6 +31,8 @@ export interface TestRow {
   duration_seconds: number;
   target_count: number;
   mix_json: string;
+  /** 0/1: whether multiple choice may go to any word in this test. */
+  mcq_any_word: number;
   report_json: string | null;
   created_at: string;
   published_at: string | null;
@@ -129,6 +131,7 @@ export function toTestView(db: Db, row: TestRow): TestView {
     durationSeconds: row.duration_seconds,
     targetCount: row.target_count,
     mix: mix.success ? mix.data : DEFAULT_MIX,
+    mcqAnyWord: row.mcq_any_word === 1,
     wordCount: counts.words,
     includedCount: counts.included,
     questionCount: counts.questions,
@@ -411,7 +414,11 @@ export function generateOffline(db: Db, test: TestRow): AchievedMix {
   if (words.length === 0) throw conflict('Add some words before generating questions.');
 
   const mix = MixWeightsSchema.safeParse(json<unknown>(test.mix_json, {}));
-  const { assignments, report } = assignFormats(words.map(toAssignable), mix.success ? mix.data : DEFAULT_MIX);
+  const { assignments, report } = assignFormats(
+    words.map(toAssignable),
+    mix.success ? mix.data : DEFAULT_MIX,
+    { anyWord: test.mcq_any_word === 1 },
+  );
 
   const byWord = new Map(assignments.map((a) => [a.wordId, a.type]));
   const orderedAssignments = words.map((w) => ({

@@ -137,7 +137,15 @@ export function myWordsDrill(db: Db, studentId: string): DrillItem[] {
   return [...sources(db, studentId)].flatMap(([wordId, { payload, from }]) => {
     const safe = stripAnswer(payload);
     return safe.type === 'translate_input'
-      ? [{ wordId, prompt: safe.prompt, direction: safe.direction, repeatedFrom: from }]
+      ? [
+          {
+            wordId,
+            prompt: safe.prompt,
+            direction: safe.direction,
+            repeatedFrom: from,
+            context: safe.context ?? null,
+          },
+        ]
       : [];
   });
 }

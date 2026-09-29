@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AnswerFeedback, StudentQuestionView } from '@voku/shared';
 import { AnswerInput, Button, cx } from './ui.tsx';
 
@@ -78,10 +78,26 @@ export interface QuestionProps {
   chosen: string | null;
   correctAnswer: string | null;
   onAnswer: (given: string) => void;
+  /**
+   * Hands the question in unanswered. Present in the sprint, where a word you
+   * do not know otherwise eats the clock while you type something to escape it;
+   * wrong answers cost nothing, so this only makes that honest.
+   */
+  onSkip?: () => void;
+  /** "Skip this word" in the sprint; practice says what it really is. */
+  skipLabel?: string;
 }
 
 /** One question, one focal element, centred on a flat plane. */
-export function QuestionCard({ question, disabled, chosen, correctAnswer, onAnswer }: QuestionProps) {
+export function QuestionCard({
+  question,
+  disabled,
+  chosen,
+  correctAnswer,
+  onAnswer,
+  onSkip,
+  skipLabel = 'Skip this word',
+}: QuestionProps) {
   const payload = question.payload;
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -126,6 +142,7 @@ export function QuestionCard({ question, disabled, chosen, correctAnswer, onAnsw
             );
           })}
         </ul>
+        <SkipLink onSkip={onSkip} label={skipLabel} disabled={disabled} />
       </div>
     );
   }
@@ -154,6 +171,8 @@ export function QuestionCard({ question, disabled, chosen, correctAnswer, onAnsw
           onChange={setText}
           onSubmit={submit}
           disabled={disabled}
+          onSkip={onSkip}
+          skipLabel={skipLabel}
         />
       </div>
     );
@@ -164,6 +183,7 @@ export function QuestionCard({ question, disabled, chosen, correctAnswer, onAnsw
       <Prompt
         label={payload.direction === 'de_en' ? 'Translate to English' : 'Übersetze ins Deutsche'}
         word={payload.prompt}
+        context={payload.context}
       />
       <TypedAnswer
         inputRef={inputRef}
@@ -171,12 +191,25 @@ export function QuestionCard({ question, disabled, chosen, correctAnswer, onAnsw
         onChange={setText}
         onSubmit={submit}
         disabled={disabled}
+        onSkip={onSkip}
+        skipLabel={skipLabel}
       />
     </div>
   );
 }
 
-function Prompt({ label, word, quiet = false }: { label: string; word: string; quiet?: boolean }) {
+function Prompt({
+  label,
+  word,
+  quiet = false,
+  context,
+}: {
+  label: string;
+  word: string;
+  quiet?: boolean;
+  /** The sentence the word was met in — which sense is being asked for. */
+  context?: string;
+}) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
       <span className="label">{label}</span>
@@ -188,6 +221,32 @@ function Prompt({ label, word, quiet = false }: { label: string; word: string; q
       >
         {quiet ? `“${word}”` : word}
       </p>
+      {context ? <p className="max-w-xl text-lg leading-snug text-ink-40">{context}</p> : null}
+    </div>
+  );
+}
+
+/** Quiet by design: an escape hatch, not an invitation. */
+function SkipLink({
+  onSkip,
+  label,
+  disabled,
+}: {
+  onSkip?: () => void;
+  label: string;
+  disabled: boolean;
+}) {
+  if (!onSkip) return null;
+  return (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={onSkip}
+        disabled={disabled}
+        className="label text-ink-40 transition-colors hover:text-ink disabled:opacity-40"
+      >
+        {label}
+      </button>
     </div>
   );
 }
@@ -198,12 +257,16 @@ function TypedAnswer({
   onChange,
   onSubmit,
   disabled,
+  onSkip,
+  skipLabel,
 }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   disabled: boolean;
+  onSkip?: () => void;
+  skipLabel: string;
 }) {
   return (
     <form
@@ -224,6 +287,7 @@ function TypedAnswer({
       <Button type="submit" variant="primary" size="lg" disabled={disabled || !value.trim()}>
         Answer
       </Button>
+      <SkipLink onSkip={onSkip} label={skipLabel} disabled={disabled} />
     </form>
   );
 }
@@ -235,15 +299,34 @@ function TypedAnswer({
  */
 export function FeedbackFlash({
   feedback,
+  skipped = false,
+  onNext,
 }: {
   // Only the three fields it actually shows, so practice — which keeps no score
   // — can use it without inventing a percentage to satisfy the type.
   feedback: Pick<AnswerFeedback, 'correct' | 'almost' | 'correctAnswer'>;
+  /** The question was handed in unanswered, so "Not quite" would be a lie. */
+  skipped?: boolean;
+  /** Moves on now. Students asked for this: reading the answer takes as long as it takes. */
+  onNext?: () => void;
 }) {
+  // Enter and space are where a hand already is after typing an answer.
+  useEffect(() => {
+    if (!onNext) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onNext();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onNext]);
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center" role="status" aria-live="assertive">
       <span className="label">
-        {feedback.correct ? 'Correct' : feedback.almost ? 'Almost' : 'Not quite'}
+        {feedback.correct ? 'Correct' : skipped ? 'Skipped' : feedback.almost ? 'Almost' : 'Not quite'}
       </span>
       <p
         className={cx(
@@ -256,29 +339,69 @@ export function FeedbackFlash({
       {!feedback.correct && feedback.almost ? (
         <p className="text-lg text-ink-40">One letter out.</p>
       ) : null}
+      {onNext ? (
+        <Button onClick={onNext} size="lg">
+          Next
+        </Button>
+      ) : null}
     </div>
   );
 }
 
-/** Generic over the feedback shape, so practice — which keeps no score — fits. */
+/** How long the answer stays on screen when nobody presses Next. */
+export const FLASH_CORRECT_MS = 900;
+/** Longer when it was wrong: that is the one the student is there to read. */
+export const FLASH_WRONG_MS = 2600;
+
+export type FlashHold<T> = (feedback: T) => number | null;
+
+/** Waits for the student instead of the clock — for untimed practice. */
+export const holdUntilNext = () => null;
+
+/**
+ * Generic over the feedback shape, so practice — which keeps no score — fits.
+ *
+ * `hold` says how long the answer stays up. Returning `null` keeps it there
+ * until Next is pressed, which is right where no clock is running; the sprint
+ * keeps a timeout so a distracted student is not left on one word, but a right
+ * answer goes by quickly and a wrong one waits long enough to be read.
+ */
 export function useFlash<T extends Pick<AnswerFeedback, 'correct' | 'almost' | 'correctAnswer'>>(
-  durationMs = 850,
+  hold: FlashHold<T> = (feedback) => (feedback.correct ? FLASH_CORRECT_MS : FLASH_WRONG_MS),
 ) {
   const [feedback, setFeedback] = useState<T | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<(() => void) | null>(null);
 
-  const show = useMemo(
-    () => (next: T, then: () => void) => {
-      setFeedback(next);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        setFeedback(null);
-        then();
-      }, durationMs);
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+
+  // Stable, so the key handler in the flash is not rebound on every render.
+  const next = useCallback(() => {
+    const then = pending.current;
+    pending.current = null;
+    clear();
+    setFeedback(null);
+    then?.();
+  }, []);
+
+  // Held in a ref so an inline `hold` does not give `show` a new identity.
+  const holdRef = useRef(hold);
+  holdRef.current = hold;
+
+  const show = useCallback(
+    (shown: T, then: () => void) => {
+      setFeedback(shown);
+      pending.current = then;
+      clear();
+      const ms = holdRef.current(shown);
+      if (ms !== null) timer.current = setTimeout(next, ms);
     },
-    [durationMs],
+    [next],
   );
 
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-  return { feedback, show };
+  useEffect(() => () => clear(), []);
+  return { feedback, show, next };
 }

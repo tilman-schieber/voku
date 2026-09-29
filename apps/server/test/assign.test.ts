@@ -265,6 +265,46 @@ describe('assignFormats', () => {
     expect(Object.values(report.achieved).reduce((a, b) => a + b, 0)).toBe(7);
   });
 
+  /**
+   * The teacher's override. The rule it lifts exists because a wrong answer
+   * costs nothing, so four options on an easy word are a free quarter mark —
+   * but a text with no traps otherwise yields a test that is nothing but
+   * typing, and that is a worse lesson than a slightly inflated score.
+   */
+  describe('multiple choice on any word', () => {
+    const easy = Array.from({ length: 12 }, (_, i) =>
+      word(`e${i}`, { difficulty: 1, trickiness: 0, suitsDefinitionMcq: true }),
+    );
+
+    it('is off by default, so an easy list gets no multiple choice', () => {
+      const { report } = assignFormats(easy, evenMix);
+      expect(report.achieved.mcq_translation).toBe(0);
+      expect(report.achieved.mcq_definition).toBe(0);
+      expect(report.shortfalls.map((s) => s.type)).toContain('mcq_translation');
+    });
+
+    it('gives the same easy list its choices when the teacher turns it on', () => {
+      const { report } = assignFormats(easy, evenMix, { anyWord: true });
+      expect(report.achieved.mcq_translation).toBeGreaterThan(0);
+      expect(report.achieved.mcq_definition).toBeGreaterThan(0);
+    });
+
+    // A definition still has to be worth writing; the switch is about difficulty.
+    it('still keeps definition questions to words that can be defined', () => {
+      const undefinable = easy.map((w) => ({ ...w, suitsDefinitionMcq: false }));
+      const { report } = assignFormats(undefinable, evenMix, { anyWord: true });
+      expect(report.achieved.mcq_definition).toBe(0);
+    });
+
+    it('still lets a trap be a choice when it is off', () => {
+      const words = [
+        ...easy,
+        word('trap', { trickiness: MIN_TRICKINESS_FOR_MCQ, difficulty: 1 }),
+      ];
+      expect(typeOf(assignFormats(words, evenMix), 'trap')).toBe('mcq_translation');
+    });
+  });
+
   it('is deterministic — the same input always produces the same assignment', () => {
     const words = Array.from({ length: 30 }, (_, i) =>
       word(`w${i}`, { trickiness: i % 4, difficulty: (i % 10) + 1, suitsFillBlank: i % 2 === 0 }),

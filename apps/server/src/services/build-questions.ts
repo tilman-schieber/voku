@@ -131,6 +131,23 @@ export function blankOut(sentence: string, headword: string): { sentence: string
   return null;
 }
 
+/**
+ * The sentence to show under a typed prompt, or nothing.
+ *
+ * Asked into German the student sees the English sentence as it stands: it
+ * fixes which sense of the word is meant, and the German is still theirs to
+ * produce. Asked into English the same sentence would hand over the answer, so
+ * the word is blanked out first — and if it cannot be found in the sentence
+ * (an inflection the patterns miss), no context is shown at all rather than a
+ * sentence with the answer sitting in it.
+ */
+function typedContext(word: BuildableWord, direction: QuestionDirection): string | null {
+  const sentence = word.contextSentence?.trim();
+  if (!sentence) return null;
+  if (direction === 'en_de') return sentence;
+  return blankOut(sentence, word.headwordEn)?.sentence ?? null;
+}
+
 export interface BuildOptions {
   direction: TestDirection;
   rng: Rng;
@@ -156,10 +173,17 @@ export function buildOffline(
 
     const typed = (downgradedFrom?: QuestionType): BuiltQuestion => {
       const { prompt, accepted } = promptAndAnswers(word, qDirection);
+      const context = typedContext(word, qDirection);
       return {
         wordId: word.id,
         type: 'translate_input',
-        payload: { type: 'translate_input', direction: qDirection, prompt, accepted },
+        payload: {
+          type: 'translate_input',
+          direction: qDirection,
+          prompt,
+          accepted,
+          ...(context ? { context } : {}),
+        },
         ...(downgradedFrom ? { downgradedFrom } : {}),
       };
     };
